@@ -180,6 +180,8 @@ def deletar_entrega(id):
     result = cursor.fetchall()
     return result
 
+# Criar CSV
+
 @app.route('/csv/', methods=['GET'])
 def criar_csv():
 
