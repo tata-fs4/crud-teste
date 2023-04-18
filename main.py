@@ -8,9 +8,12 @@
 # criar a TABELA de entregas contendo ID, CEP, numero de pacote, nome do remetente, complemento, numero da casa
 # Ao final, gerar um arquivo CSV
 
-from flask import Flask, request
+from flask import Flask, request, Response
 import psycopg2
+import psycopg2.extras
 import requests
+import pandas as pd
+
 
 
 #instanciando o Flask:
@@ -177,8 +180,22 @@ def deletar_entrega(id):
     result = cursor.fetchall()
     return result
 
-#TODO gerar um arquivo csv - Criar uma rota para o arquivo, e formatá-lo para um arquivo CSV.
+@app.route('/csv/', methods=['GET'])
+def criar_csv():
+
+    con = psycopg2.connect("host=localhost dbname=crud_api user=postgres password=postgres")
+    cursor = con.cursor()
+    
+    sql = cursor.execute("COPY (SELECT * FROM entregas LEFT JOIN enderecos ON enderecos.cep = entregas.cep) TO STDOUT WITH CSV DELIMITER ';'")
+    with open("D:/Trabalho/crud_api/crud.csv", "w") as file:
+        cursor.copy_expert(sql, file)
+    con.commit()
+    con.close()
+    return "Arquivo CSV exportado com sucesso."
+    
+    
 
 # Aqui não apenas rodamos a API efetivamente, como o debug=True a mantém ativa, visto suas mudanças durante os testes do código.
+
 
 app.run(debug=True)
