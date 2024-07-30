@@ -8,7 +8,7 @@
 # criar a TABELA de entregas contendo ID, CEP, numero de pacote, nome do remetente, complemento, numero da casa
 # Ao final, gerar um arquivo CSV
 
-from flask import Flask, request, Response
+from flask import Flask, request, jsonify
 import psycopg2
 import psycopg2.extras
 import requests
@@ -20,45 +20,54 @@ import pandas as pd
 app = Flask(__name__)
 
 # Conectando o banco de dados, utilizando o psycopg2
-con = psycopg2.connect(
-    database = "crud_api",
-    user = "postgres",
-    password = "postgres",
-    host = "localhost"
-)
+def get_db_connection():
+    return psycopg2.connect(
+        database="crud_api",
+        user="postgres",
+        password="postgres",
+        host="localhost"
+    )
 
 # Listar todos os endereços
 # Utilizado o Decorator do Flask, cria-se a rota, e escolhe-se o método (no caso, GET), para criar uma função, neste caso para listar todos os endereços
 @app.route('/enderecos/', methods=['GET'])
 def listar_enderecos():
-    cursor = con.cursor()
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
     cursor.execute("SELECT * FROM enderecos")
     result = cursor.fetchall()
-    print(result)
-    return result
+    cursor.close()
+    con.close()
+    return jsonify(result)
 
 # Listar endereço por ID
 # Repete-se o de cima, mas neste caso, para listar apenas um endereço, identificado por sua ID
-@app.route('/enderecos/<id>', methods=['GET'])
+@app.route('/enderecos/<int:id>', methods=['GET'])
 def listar_endereco(id):
-    cursor = con.cursor()
-    cursor.execute(f"SELECT * FROM enderecos WHERE id = {id}")
-    result = cursor.fetchall()
-    return result
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT * FROM enderecos WHERE id = %s", (id,))
+    result = cursor.fetchone()
+    cursor.close()
+    con.close()
+    return jsonify(result)
 
 # Listar endereço por CEP
 # Novamente repete-se, mas no caso o endereço é identificado por seu CEP (se existente no DB, caso contrário, retorna vazio)
 @app.route('/enderecos/cep/<cep>', methods=['GET'])
 def listar_enderecos_cep(cep):
-    cursor = con.cursor()
-    cursor.execute(f"SELECT * FROM enderecos WHERE cep = '{cep}'")
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT * FROM enderecos WHERE cep = %s", (cep,))
     result = cursor.fetchall()
-    return result
+    cursor.close()
+    con.close()
+    return jsonify(result)
 
 # Adicionar endereço
 # Aqui cria-se uma rota utilizando o método POST, para adicionar um endereço novo na lista, com ID automático.
 @app.route('/enderecos/', methods=['POST'])
-def adicionar_endereco(cep = None):
+def adicionar_endereco(cep=None):
     if cep or request.is_json:
         if not cep:
             add_endereco = request.get_json()
@@ -67,20 +76,26 @@ def adicionar_endereco(cep = None):
         if len(cep) == 8:
             viacep = requests.get(f"https://viacep.com.br/ws/{cep}/json/").json()
             if viacep == {'erro': True}:
-                return "O CEP é inválido"
+                return "O CEP é inválido", 400
             else:
-                with con.cursor() as cursor:
-                    cursor.execute(f"INSERT INTO enderecos (cep, rua, bairro, cidade, estado, pais) values ('{cep}', '{viacep['logradouro']}', '{viacep['bairro']}', '{viacep['localidade']}', '{viacep['uf']}', 'Brasil')")
-                    con.commit()
-                return "Inserido com sucesso!"
+                con = get_db_connection()
+                cursor = con.cursor()
+                cursor.execute(
+                    "INSERT INTO enderecos (cep, rua, bairro, cidade, estado, pais) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (cep, viacep['logradouro'], viacep['bairro'], viacep['localidade'], viacep['uf'], 'Brasil')
+                )
+                con.commit()
+                cursor.close()
+                con.close()
+                return "Inserido com sucesso!", 201
         else:
-            return "Cep precisa ter 8 dígitos"
+            return "Cep precisa ter 8 dígitos", 400
     else:
-        return "A requisição precisa ser enviado em JSON"
+        return "A requisição precisa ser enviada em JSON", 400
 
 # Alterar endereço
 # Aqui cria-se uma rota utilizando o método PUT, para alterar um endereço específico, via sua ID.
-@app.route('/enderecos/<id>', methods=['PUT'])
+@app.route('/enderecos/<int:id>', methods=['PUT'])
 def alterar_endereco(id):
     if request.is_json:
         add_endereco = request.get_json()
@@ -89,44 +104,56 @@ def alterar_endereco(id):
         if len(cep) == 8:
             viacep = requests.get(f"https://viacep.com.br/ws/{cep}/json/").json()
             if viacep == {'erro': True}:
-                return "O CEP é inválido"
+                return "O CEP é inválido", 400
             else:
-                with con.cursor() as cursor:
-                    cursor.execute(f"UPDATE enderecos SET cep = '{cep}', rua = '{viacep['logradouro']}', bairro = '{viacep['bairro']}', cidade = '{viacep['localidade']}', estado = '{viacep['uf']}', pais = 'Brasil' WHERE id = {id}")
-                    con.commit()
-                return "Inserido com sucesso!"
+                con = get_db_connection()
+                cursor = con.cursor()
+                cursor.execute(
+                    "UPDATE enderecos SET cep = %s, rua = %s, bairro = %s, cidade = %s, estado = %s, pais = %s WHERE id = %s",
+                    (cep, viacep['logradouro'], viacep['bairro'], viacep['localidade'], viacep['uf'], 'Brasil', id)
+                )
+                con.commit()
+                cursor.close()
+                con.close()
+                return "Atualizado com sucesso!", 200
         else:
-            return "Cep precisa ter 8 dígitos"
+            return "Cep precisa ter 8 dígitos", 400
     else:
-        return "A requisição precisa ser enviado em JSON"
+        return "A requisição precisa ser enviada em JSON", 400"
 
 # # Deletar endereço
 # Aqui cria-se uma rota utilizando o método DELETE, para deletar um endereço específico, via sua ID.
-@app.route('/enderecos/<id>', methods=['DELETE'])
+@app.route('/enderecos/<int:id>', methods=['DELETE'])
 def deletar_endereco(id):
-    with con.cursor() as cursor:
-      cursor.execute(f"DELETE FROM enderecos WHERE id = {id}")
-      con.commit()
-    result = cursor.fetchall()
-    return result
-
-
+    con = get_db_connection()
+    cursor = con.cursor()
+    cursor.execute("DELETE FROM enderecos WHERE id = %s", (id,))
+    con.commit()
+    cursor.close()
+    con.close()
+    return "Deletado com sucesso!", 200
 
 # Listar todas as entregas
 @app.route('/entregas/', methods=['GET'])
 def listar_entregas():
-    cursor = con.cursor()
-    cursor.execute(f"SELECT * FROM entregas")
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT * FROM entregas")
     result = cursor.fetchall()
-    return result
+    cursor.close()
+    con.close()
+    return jsonify(result)
 
 # Listar entrega por ID
-@app.route('/entregas/<id>', methods=['GET'])
+@app.route('/entregas/<int:id>', methods=['GET'])
 def listar_entrega(id):
-    cursor = con.cursor()
-    cursor.execute(f"SELECT * FROM entregas WHERE id = {id}")
-    result = cursor.fetchall()
-    return result
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    cursor.execute("SELECT * FROM entregas WHERE id = %s", (id,))
+    result = cursor.fetchone()
+    cursor.close()
+    con.close()
+    return jsonify(result)
 
 # Adicionar entrega
 # Aqui, o que foi feito de diferente é: Caso o CEP não exista já na tabela ENDEREÇOS, ele automaticamente o adiciona, para fazer a entrega.
@@ -137,48 +164,62 @@ def adicionar_entrega():
         cep = conteudo["cep"]
         cep = cep.replace("-", "").replace(".", "").replace(",", "").replace("/", "")
         if len(cep) == 8:
-            if not listar_enderecos_cep(cep):
+            if not listar_enderecos_cep(cep).json:
                 retorno = adicionar_endereco(cep)
-                if retorno != "Inserido com sucesso!":
+                if retorno[1] != 201:
                     return retorno
-            with con.cursor() as cursor:
-                cursor.execute(f"INSERT INTO entregas (cep, numero, complemento, qtd_pacotes, nome_remetente) values ('{cep}','{conteudo['numero']}', '{conteudo['complemento']}', '{conteudo['qtd_pacotes']}', '{conteudo['nome_remetente']}')")
-                con.commit()   
-            return "Inserido com sucesso!"
+            con = get_db_connection()
+            cursor = con.cursor()
+            cursor.execute(
+                "INSERT INTO entregas (cep, numero, complemento, qtd_pacotes, nome_remetente) VALUES (%s, %s, %s, %s, %s)",
+                (cep, conteudo['numero'], conteudo['complemento'], conteudo['qtd_pacotes'], conteudo['nome_remetente'])
+            )
+            con.commit()
+            cursor.close()
+            con.close()
+            return "Inserido com sucesso!", 201
         else:
-            return "Cep precisa ter 8 dígitos"
+            return "Cep precisa ter 8 dígitos", 400
     else:
-        return "A requisição precisa ser enviado em JSON"
+        return "A requisição precisa ser enviada em JSON", 400
 
 # Alterar entrega
-@app.route('/entregas/<id>', methods=['PUT'])
+@app.route('/entregas/<int:id>', methods=['PUT'])
 def alterar_entrega(id):
     if request.is_json:
         conteudo = request.get_json()
         cep = conteudo["cep"]
         cep = cep.replace("-", "").replace(".", "").replace(",", "").replace("/", "")
         if len(cep) == 8:
-            if not listar_enderecos_cep(cep):
+            if not listar_enderecos_cep(cep).json:
                 retorno = adicionar_endereco(cep)
-                if retorno != "Inserido com sucesso!":
+                if retorno[1] != 201:
                     return retorno
-            with con.cursor() as cursor:
-                cursor.execute(f"UPDATE entregas SET cep = '{cep}', numero = '{conteudo['numero']}', complemento = '{conteudo['complemento']}', qtd_pacotes = '{conteudo['qtd_pacotes']}', nome_remetente = '{conteudo['nome_remetente']}' WHERE id = {id}")
-                con.commit()
-            return "Inserido com sucesso!"
+            con = get_db_connection()
+            cursor = con.cursor()
+            cursor.execute(
+                "UPDATE entregas SET cep = %s, numero = %s, complemento = %s, qtd_pacotes = %s, nome_remetente = %s WHERE id = %s",
+                (cep, conteudo['numero'], conteudo['complemento'], conteudo['qtd_pacotes'], conteudo['nome_remetente'], id)
+            )
+            con.commit()
+            cursor.close()
+            con.close()
+            return "Atualizado com sucesso!", 200
         else:
-            return "Cep precisa ter 8 dígitos"
+            return "Cep precisa ter 8 dígitos", 400
     else:
-        return "A requisição precisa ser enviado em JSON"
+        return "A requisição precisa ser enviada em JSON", 400
 
 # Deletar entrega
-@app.route('/entregas/<id>', methods=['DELETE'])
+@app.route('/entregas/<int:id>', methods=['DELETE'])
 def deletar_entrega(id):
-    with con.cursor() as cursor:
-        cursor.execute(f"DELETE FROM entregas WHERE id = {id}")
-        con.commit()  
-    result = cursor.fetchall()
-    return result
+    con = get_db_connection()
+    cursor = con.cursor()
+    cursor.execute("DELETE FROM entregas WHERE id = %s", (id,))
+    con.commit()
+    cursor.close()
+    con.close()
+    return "Deletado com sucesso!", 200
 
 # Criar CSV
 
@@ -190,11 +231,21 @@ def criar_csv():
     enderecos = cursor.fetchall()
     
     # Query para obter todas as entregas
+@app.route('/csv/', methods=['GET'])
+def criar_csv():
+    con = get_db_connection()
+    cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    
+    # Query para obter todos os endereços
+    cursor.execute("SELECT * FROM enderecos")
+    enderecos = cursor.fetchall()
+    
+    # Query para obter todas as entregas
     cursor.execute("SELECT * FROM entregas")
     entregas = cursor.fetchall()
     
-    # Fechar o cursor
     cursor.close()
+    con.close()
     
     # Criar DataFrames do Pandas
     df_enderecos = pd.DataFrame(enderecos, columns=['ID', 'CEP', 'Rua', 'Bairro', 'Cidade', 'Estado', 'Pais'])
