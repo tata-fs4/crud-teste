@@ -184,17 +184,30 @@ def deletar_entrega(id):
 
 @app.route('/csv/', methods=['GET'])
 def criar_csv():
-
-    con = psycopg2.connect("host=localhost dbname=crud_api user=postgres password=postgres")
+    # Query para obter todos os endereços
     cursor = con.cursor()
+    cursor.execute("SELECT * FROM enderecos")
+    enderecos = cursor.fetchall()
     
-    sql = cursor.execute("COPY (SELECT * FROM entregas LEFT JOIN enderecos ON enderecos.cep = entregas.cep) TO STDOUT WITH CSV DELIMITER ';'")
-    with open("D:/Trabalho/crud_api/crud.csv", "w") as file:
-        cursor.copy_expert(sql, file)
-    con.commit()
-    con.close()
-    return "Arquivo CSV exportado com sucesso."
+    # Query para obter todas as entregas
+    cursor.execute("SELECT * FROM entregas")
+    entregas = cursor.fetchall()
     
+    # Fechar o cursor
+    cursor.close()
+    
+    # Criar DataFrames do Pandas
+    df_enderecos = pd.DataFrame(enderecos, columns=['ID', 'CEP', 'Rua', 'Bairro', 'Cidade', 'Estado', 'Pais'])
+    df_entregas = pd.DataFrame(entregas, columns=['ID', 'CEP', 'Numero', 'Complemento', 'Qtd_Pacotes', 'Nome_Remetente'])
+    
+    # Salvar DataFrames em CSV
+    df_enderecos.to_csv('enderecos.csv', index=False)
+    df_entregas.to_csv('entregas.csv', index=False)
+    
+    return "CSV gerado com sucesso!"
+
+if __name__ == '__main__':
+    app.run(debug=True)
     
 
 # Aqui não apenas rodamos a API efetivamente, como o debug=True a mantém ativa, visto suas mudanças durante os testes do código.
